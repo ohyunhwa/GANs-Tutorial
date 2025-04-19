@@ -1,23 +1,26 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torchvision import datasets, transforms
-from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 import torchvision
+from torchvision import datasets, transforms
+from torch.utils.data import DataLoader
+
 
 device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 print(f"Using device: {device}")
+
 
 # Hyperparameters
 batch_size = 128
 lr = 0.0002
 z_dim = 100
-num_epochs = 50
+num_epochs = 100
 
-# Get Datasets
+
+# Datasets
 transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize((0.5,), (0.5,))  # Normalize to [-1, 1]
@@ -25,6 +28,7 @@ transform = transforms.Compose([
 
 train_data = datasets.FashionMNIST(root='data', train=True, transform=transform, download=True)
 train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
+
 
 # Generator
 class Generator(nn.Module):
@@ -62,18 +66,18 @@ class Discriminator(nn.Module):
         return self.model(x)
     
     
-# Initialize Model
+# Generator, Discriminator
 G = Generator(z_dim).to(device)
 D = Discriminator().to(device)
 
 
-# Initialize Loss and Optimizer
+# Loss, Optimizer
 criterion = nn.BCELoss()
 opt_G = optim.Adam(G.parameters(), lr=lr, betas=(0.5, 0.999))
 opt_D = optim.Adam(D.parameters(), lr=lr, betas=(0.5, 0.999))
 
 
-# Initialize Noise
+# Noise
 fixed_noise = torch.randn(64, z_dim, device=device)
 
 
@@ -83,7 +87,7 @@ for epoch in range(num_epochs):
         real = real.view(-1, 28 * 28).to(device)
         batch_size = real.size(0)
 
-        ### Train Discriminator: real + fake
+        # Train Discriminator: real + fake
         noise = torch.randn(batch_size, z_dim, device=device)
         fake = G(noise)
 
@@ -95,7 +99,7 @@ for epoch in range(num_epochs):
         loss_D.backward()
         opt_D.step()
 
-        ### Train Generator: fool Discriminator
+        # Train Generator: fake Discriminator
         output = D(fake)
         loss_G = criterion(output, torch.ones_like(output))
 
@@ -108,11 +112,24 @@ for epoch in range(num_epochs):
     # Visualize
     if (epoch + 1) % 10 == 0 or epoch == 0:
         with torch.no_grad():
+            
             fake_images = G(fixed_noise).reshape(-1, 1, 28, 28) * 0.5 + 0.5
             grid_img = torchvision.utils.make_grid(fake_images, nrow=8)
             npimg = grid_img.cpu().numpy()
+            
+            os.makedirs("output", exist_ok=True)
+            
             plt.figure(figsize=(6,6))
             plt.imshow(np.transpose(npimg, (1, 2, 0)))
             plt.title(f"Epoch {epoch+1}")
             plt.axis('off')
-            plt.show()
+            
+            plt.savefig(f"output/epoch_{epoch+1:03d}.png")
+            plt.close()
+    
+    
+    # Save
+    os.makedirs("checkpoints", exist_ok=True)
+    torch.save(G.state_dict(), "checkpoints/G.pth")
+    torch.save(D.state_dict(), "checkpoints/D.pth")
+    print("Models saved to checkpoints/")
